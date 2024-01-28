@@ -1,14 +1,5 @@
-"""Weighted k-means algorithm.
+"""Weighted k-means algorithm. """
 
-Code: Olivia Guest (weighted k-means) and
-      The Data Science Lab (k-means and k-means++)
-
-Algorithm: Bradley C. Love (weighted k-means)
-
-Original code for vanilla k-means and k-means++ can be found at:
-https://datasciencelab.wordpress.com/2013/12/12/clustering-with-k-means-in-python/
-https://datasciencelab.wordpress.com/2014/01/15/improved-seeding-for-clustering-with-k-means/
-"""
 
 from __future__ import division, print_function
 
@@ -20,11 +11,16 @@ import numpy as np
 import sklearn.datasets
 from colorama import Style
 from scipy.spatial.distance import cdist
+from tqdm import tqdm
 
 
 def euclidean(a,b):
     return cdist([a], [b])[0, 0]
 
+class NonConvergenceError(Exception):
+    def __init__(self, message="Algorithm did not converge."):
+        self.message = message
+        super().__init__(self.message)
 
 class WKMeans():
     """Class for running weighted k-means.
@@ -119,7 +115,7 @@ class WKMeans():
         # specific instance of k-means, etc:
         self.label = label
         # How much output to print:
-        self.verbose = verbose
+        self.verbose = False
 
     def _init_gauss(self, N):
         """Create test data in which there are three bivariate Gaussians.
@@ -300,6 +296,7 @@ class WKMeans():
         self.mu = new_mu
 
     def _has_converged(self):
+        counts_ratio = 100
         """Check if the items in clusters have stabilised between two runs.
 
         This checks to see if the distance between the centroids is lower than
@@ -325,10 +322,13 @@ class WKMeans():
             if self.verbose:
                 print('\tDistance between previous and current centroids: ' +
                       Style.BRIGHT + str(diff) + Style.RESET_ALL)
+                
+            # calculate the ratio between the counts of the largest and smallest clusters
+            counts_ratio = max(self.counts_per_cluster) / min(self.counts_per_cluster)
 
-        # Return true if the items in each cluster have not changed much since
-        # the last time this was run:
-        return diff < self.max_diff
+        # Return true if the items in each cluster have not changed much since or if the clusters are within 10% of each other
+        # the last time this was run:      
+        return diff < self.max_diff or counts_ratio <= 1.10
 
     def find_centers(self, method='random'):
         """Find the centroids per cluster until equilibrium."""
@@ -341,23 +341,28 @@ class WKMeans():
         if method == 'random':
             # If method of initialisation is not k++, use random centeroids.
             self.mu = random.sample(X, K)
-
-        while not self._has_converged() and self.runs < self.max_runs:
-            if self.verbose:
-                print(Style.BRIGHT + '\nRun: ' + str(self.runs) + ', alpha: ' +
-                      str(self.alpha) + ', beta: ' +
-                      str(self.beta) + ', label: '
-                      + self.label + Style.RESET_ALL)
-            # While the algorithm has neither converged nor been run too many
-            # times:
-            # a) keep track of old centroids;
-            self.old_mu = self.mu
-            # b) assign all points in X to clusters;
-            self._cluster_points()
-            # c) recalculate the centers per cluster.
-            self._reevaluate_centers()
-            self.runs += 1
-
+        with tqdm(total=self.max_runs, desc = f"Running. alpha: {self.alpha}, beta: {self.beta}") as pbar:
+            while not self._has_converged(): 
+                if self.runs < self.max_runs:
+                    if self.verbose:
+                        print(Style.BRIGHT + '\nRun: ' + str(self.runs) + ', alpha: ' +
+                            str(self.alpha) + ', beta: ' +
+                            str(self.beta) + ', label: '
+                            + self.label + Style.RESET_ALL)
+                    # While the algorithm has neither converged nor been run too many
+                    # times:
+                    # a) keep track of old centroids;
+                    self.old_mu = self.mu
+                    # b) assign all points in X to clusters;
+                    self._cluster_points()
+                    # c) recalculate the centers per cluster.
+                    self._reevaluate_centers()
+                    self.runs += 1
+                    pbar.update(1)
+                else:
+                    raise NonConvergenceError(f"Algorithm did not converge for alpha={self.alpha} and beta={self.beta}.")
+            if self._has_converged():
+                pbar.close()
         print(Style.BRIGHT + '\nThe End!' + Style.RESET_ALL)
         print('\tLabel: ' + Style.BRIGHT + self.label + Style.RESET_ALL)
         print('\tTotal runs:' + Style.BRIGHT, self.runs, Style.RESET_ALL)
