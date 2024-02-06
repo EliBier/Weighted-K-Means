@@ -61,7 +61,7 @@ class WKMeans():
 
     def __init__(self, K, X=None, N=0, c=None, alpha=0, beta=0, dist=euclidean,
                  max_runs=200, label='My Clustering', verbose=True, mu=None,
-                 max_diff=0.001):
+                 max_diff=0.001, accept_ratio = 1.05):
         """Initialisation."""
         self.K = K
         if X is None:
@@ -116,6 +116,8 @@ class WKMeans():
         self.label = label
         # How much output to print:
         self.verbose = False
+        # Threshold for the ratio between the largest and smallest clusters to accept a districting
+        self.accept_ratio = accept_ratio
 
     def _init_gauss(self, N):
         """Create test data in which there are three bivariate Gaussians.
@@ -213,10 +215,10 @@ class WKMeans():
         # Firstly perform classical k-means, weighting the distances.
         #######################################################################
         # compute the distance or all points to each of the centroid of each of the clusters
-        distance_to_clusters = cdist(self.X, np.array(self.mu), 'euclidean')
+        distance_to_centroids = cdist(self.X, np.array(self.mu), 'euclidean')
         
         # Then compute do element-wise multiplication to apply the scaling factor to each distance
-        weighted_distance = np.multiply(distance_to_clusters, self.scaling_factor[:,np.newaxis].T)
+        weighted_distance = np.multiply(distance_to_centroids, self.scaling_factor[:,np.newaxis].T)
 
         # Then find the index of the closest centroid for each point and return them in a 1 x n np.array where n is the number of points
         self.cluster_indices = np.argmin(weighted_distance, axis=1)
@@ -328,7 +330,7 @@ class WKMeans():
 
         # Return true if the items in each cluster have not changed much since or if the clusters are within 10% of each other
         # the last time this was run:      
-        return diff < self.max_diff or counts_ratio <= 1.10
+        return diff < self.max_diff or counts_ratio <= self.accept_ratio
 
     def find_centers(self, method='random'):
         """Find the centroids per cluster until equilibrium."""
